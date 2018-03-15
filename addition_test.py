@@ -34,7 +34,7 @@ class Net(nn.Module):
 
     def forward(self, x, hidden=None):
         y = self.indrnn(x, hidden)
-        return self.lin(y[:, -1])
+        return self.lin(y[:, -1]).squeeze(1)
 
 class LSTM(nn.Module):
     def __init__(self):
@@ -44,7 +44,7 @@ class LSTM(nn.Module):
 
     def forward(self, x, hidden=None):
         x, hidden = self.cell1(x, hidden)
-        return self.lin(x[:, -1])
+        return self.lin(x[:, -1]).squeeze(1)
 
 
 def main():
