@@ -26,15 +26,21 @@ BATCH_SIZE = 50
 
 cuda = torch.cuda.is_available()
 
+
 class Net(nn.Module):
     def __init__(self, input_size, hidden_size, n_layer=2):
         super(Net, self).__init__()
-        self.indrnn = IndRNN(input_size, hidden_size, n_layer, cuda=cuda, hidden_max_abs=RECURRENT_MAX)
+        self.indrnn = IndRNN(
+            input_size, hidden_size, n_layer,
+            cuda=cuda, hidden_max_abs=RECURRENT_MAX)
         self.lin = nn.Linear(hidden_size, 1)
+        self.lin.bias.data.fill_(.1)
+        self.lin.weight.data.normal_(0, .01)
 
     def forward(self, x, hidden=None):
         y = self.indrnn(x, hidden)
         return self.lin(y[:, -1]).squeeze(1)
+
 
 class LSTM(nn.Module):
     def __init__(self):

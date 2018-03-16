@@ -4,7 +4,8 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 import math
-     
+
+
 class IndRNNCell(nn.Module):
     r"""An IndRNN cell with tanh or ReLU non-linearity.
 
@@ -84,7 +85,7 @@ class IndRNNCell(nn.Module):
                 weight.data.normal_(0, 0.01)
                 # weight.data.uniform_(-stdv, stdv)
         self.check_bounds()
-         
+
     def check_bounds(self):
         if self.hidden_min_abs:
             abs_kernel = torch.abs(self.weight_hh.data)
@@ -105,21 +106,19 @@ class IndRNNCell(nn.Module):
             raise RuntimeError(
                 "Unknown nonlinearity: {}".format(self.nonlinearity))
 
-        return func(
-            input, hx,
-            self.weight_ih, self.weight_hh,
-            self.bias_ih
-        )
-        
+        return func(input, hx,  self.weight_ih, self.weight_hh, self.bias_ih)
+
+
 def IndRNNTanhCell(input, hidden, w_ih, w_hh, b_ih=None):
     hy = F.tanh(F.linear(input, w_ih, b_ih) + F.mul(hidden, w_hh))
     return hy
-    
+
+
 def IndRNNReLuCell(input, hidden, w_ih, w_hh, b_ih=None):
     hy = F.relu(F.linear(input, w_ih, b_ih) + F.mul(hidden, w_hh))
     return hy
-    
-    
+
+
 class IndRNN(nn.Module):
     r"""Applies a multi-layer IndRNN with `tanh` or `ReLU` non-linearity to an
     input sequence.
@@ -134,7 +133,7 @@ class IndRNN(nn.Module):
 
     where :math:`h_t` is the hidden state at time `t`, and :math:`x_t` is
     the hidden state of the previous layer at time `t` or :math:`input_t`
-    for the first layer. (*) is element-wise multiplication. 
+    for the first layer. (*) is element-wise multiplication.
     If :attr:`nonlinearity`='relu', then `ReLU` is used instead of `tanh`.
 
     Args:
@@ -146,7 +145,7 @@ class IndRNN(nn.Module):
             Default: ``True``
         batch_first: If ``True``, then the input and output tensors are provided
             as `(batch, seq, feature)`
-            
+
     Inputs: input, h_0
         - **input** of shape `(seq_len, batch, input_size)`: tensor containing the features
           of the input sequence. The input can also be a packed variable length
@@ -175,29 +174,33 @@ class IndRNN(nn.Module):
         >>> h0 = torch.randn(2, 3, 20)
         >>> output = rnn(input, h0)
     """
+
     def __init__(self, input_size, hidden_size, n_layer=1, cuda=False, **kwargs):
         super(IndRNN, self).__init__()
         self.hidden_size = hidden_size
         self.n_layer = n_layer
         self.cuda = cuda
-        self.cells = nn.ModuleList([IndRNNCell(input_size, hidden_size, **kwargs)] + [
-            IndRNNCell(hidden_size, hidden_size, **kwargs) for _ in range(n_layer-1)])
+        self.cells = nn.ModuleList(
+            [IndRNNCell(input_size, hidden_size, **kwargs)]
+            + [IndRNNCell(hidden_size, hidden_size, **kwargs) for _ in range(
+                n_layer - 1)])
 
     def forward(self, x, hidden=None):
         outputs = []
         if hidden is None:
-            hx = [torch.zeros(x.size(0), self.hidden_size) for _ in range(self.n_layer)]
+            hx = [torch.zeros(x.size(0), self.hidden_size)
+                  for _ in range(self.n_layer)]
         else:
             hx = hidden
         if self.cuda:
             hx = [h.cuda() for h in hx]
         hx = [Variable(h) for h in hx]
-        
+
         for t in range(x.size(1)):
             x_t = x[:, t]
             for i, cell in enumerate(self.cells):
                 hx[i] = cell(x_t, hx[i])
                 x_t = hx[i]
-                if i == self.n_layer-1:
+                if i == self.n_layer - 1:
                     outputs += [x_t]
         return torch.stack(outputs, 1).squeeze(2)
