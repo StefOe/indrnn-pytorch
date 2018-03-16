@@ -106,16 +106,16 @@ class IndRNNCell(nn.Module):
             raise RuntimeError(
                 "Unknown nonlinearity: {}".format(self.nonlinearity))
 
-        return func(input, hx,  self.weight_ih, self.weight_hh, self.bias_ih)
+        return func(input, hx, self.weight_ih, self.weight_hh, self.bias_ih)
 
 
 def IndRNNTanhCell(input, hidden, w_ih, w_hh, b_ih=None):
-    hy = F.tanh(F.linear(input, w_ih, b_ih) + F.mul(hidden, w_hh))
+    hy = F.tanh(F.linear(input, w_ih, b_ih) + F.mul(w_hh, hidden))
     return hy
 
 
 def IndRNNReLuCell(input, hidden, w_ih, w_hh, b_ih=None):
-    hy = F.relu(F.linear(input, w_ih, b_ih) + F.mul(hidden, w_hh))
+    hy = F.relu(F.linear(input, w_ih, b_ih) + F.mul(w_hh, hidden))
     return hy
 
 

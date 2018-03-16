@@ -56,7 +56,7 @@ class LSTM(nn.Module):
 def main():
     # build model
     model = Net(2, NUM_UNITS, 2)
-    #model = LSTM()
+    # model = LSTM()
     if cuda:
         model.cuda()
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
@@ -71,6 +71,7 @@ def main():
             if cuda:
                 data, target = data.cuda(), target.cuda()
             data, target = Variable(data), Variable(target)
+            model.zero_grad()
             out = model(data)
             loss = F.mse_loss(out, target)
             loss.backward()
