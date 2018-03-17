@@ -175,18 +175,33 @@ class IndRNN(nn.Module):
         >>> output = rnn(input, h0)
     """
 
-    def __init__(self, input_size, hidden_size, n_layer=1, cuda=False, **kwargs):
+    def __init__(self, input_size, hidden_size, n_layer=1, batch_norm=False,
+                 step_size=None, cuda=False, **kwargs):
         super(IndRNN, self).__init__()
         self.hidden_size = hidden_size
+        if batch_norm and step_size is None:
+            raise Exception("Frame wise batch size needs to know the step size")
+        self.batch_norm = batch_norm
+        self.step_size = step_size
         self.n_layer = n_layer
         self.cuda = cuda
-        self.cells = nn.ModuleList(
-            [IndRNNCell(input_size, hidden_size, **kwargs)]
-            + [IndRNNCell(hidden_size, hidden_size, **kwargs) for _ in range(
-                n_layer - 1)])
+
+        cells = []
+        for i in range(n_layer):
+            if i == 0:
+                cells += [IndRNNCell(input_size, hidden_size, **kwargs)]
+            else:
+                cells += [IndRNNCell(hidden_size, hidden_size, **kwargs)]
+        self.cells = nn.ModuleList(cells)
+
+        if batch_norm:
+            bns = []
+            for i in range(n_layer):
+                bns += [nn.BatchNorm2d(step_size)]
+            self.bns = nn.ModuleList(bns)
+
 
     def forward(self, x, hidden=None):
-        outputs = []
         if hidden is None:
             hx = [torch.zeros(x.size(0), self.hidden_size)
                   for _ in range(self.n_layer)]
@@ -195,12 +210,15 @@ class IndRNN(nn.Module):
         if self.cuda:
             hx = [h.cuda() for h in hx]
         hx = [Variable(h) for h in hx]
-
-        for t in range(x.size(1)):
-            x_t = x[:, t]
-            for i, cell in enumerate(self.cells):
+        
+        for i, cell in enumerate(self.cells):
+            outputs = []
+            for t in range(x.size(1)):
+                x_t = x[:, t]
                 hx[i] = cell(x_t, hx[i])
                 x_t = hx[i]
-                if i == self.n_layer - 1:
-                    outputs += [x_t]
-        return torch.stack(outputs, 1).squeeze(2)
+                outputs += [x_t]
+            x = torch.stack(outputs, 1)
+            if self.batch_norm:
+                x = self.bns[i](x)
+        return x.squeeze(2)

@@ -19,6 +19,7 @@ TIME_STEPS = 100
 NUM_UNITS = 128
 LEARNING_RATE = 0.0002
 NUM_LAYERS = 2
+BATCH_NORM = False
 RECURRENT_MAX = pow(2, 1 / TIME_STEPS)
 
 # Parameters taken from https://arxiv.org/abs/1511.06464
@@ -31,8 +32,8 @@ class Net(nn.Module):
     def __init__(self, input_size, hidden_size, n_layer=2):
         super(Net, self).__init__()
         self.indrnn = IndRNN(
-            input_size, hidden_size, n_layer,
-            cuda=cuda, hidden_max_abs=RECURRENT_MAX)
+            input_size, hidden_size, n_layer, batch_norm=BATCH_NORM,
+            cuda=cuda, hidden_max_abs=RECURRENT_MAX, step_size=TIME_STEPS)
         self.lin = nn.Linear(hidden_size, 1)
         self.lin.bias.data.fill_(.1)
         self.lin.weight.data.normal_(0, .01)
@@ -55,13 +56,14 @@ class LSTM(nn.Module):
 
 def main():
     # build model
-    model = Net(2, NUM_UNITS, 2)
+    model = Net(2, NUM_UNITS, NUM_LAYERS)
     # model = LSTM()
     if cuda:
         model.cuda()
     optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
 
     # Train the model
+    model.train()
     step = 0
     while True:
         losses = []

@@ -5,5 +5,5 @@ The test functions are adapted from the tensorflow implementation (https://githu
 Tested with Python3.5 and pytorch 0.3.1/0.4.0a0+5edf6b2
 
 TODOs:
-
--add sequential Mnist test
+-get parameters for MNIST experiments
+-add permutation MNIST test
