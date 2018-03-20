@@ -176,7 +176,7 @@ class IndRNN(nn.Module):
     """
 
     def __init__(self, input_size, hidden_size, n_layer=1, batch_norm=False,
-                 step_size=None, cuda=False, **kwargs):
+                 step_size=None, **kwargs):
         super(IndRNN, self).__init__()
         self.hidden_size = hidden_size
         if batch_norm and step_size is None:
@@ -184,7 +184,6 @@ class IndRNN(nn.Module):
         self.batch_norm = batch_norm
         self.step_size = step_size
         self.n_layer = n_layer
-        self.cuda = cuda
 
         cells = []
         for i in range(n_layer):
@@ -199,25 +198,21 @@ class IndRNN(nn.Module):
             for i in range(n_layer):
                 bns += [nn.BatchNorm2d(step_size)]
             self.bns = nn.ModuleList(bns)
-
-
-    def forward(self, x, hidden=None):
-        if hidden is None:
-            hx = [torch.zeros(x.size(0), self.hidden_size)
-                  for _ in range(self.n_layer)]
-        else:
-            hx = hidden
-        if self.cuda:
-            hx = [h.cuda() for h in hx]
-        hx = [Variable(h) for h in hx]
+            
         
+        h0 = torch.zeros(hidden_size)
+        self.register_buffer('h0', torch.autograd.Variable(h0))
+
+
+    def forward(self, x, hidden=None):                
         for i, cell in enumerate(self.cells):
+            cell.check_bounds()
+            hx = self.h0.unsqueeze(0).expand(x.size(0), self.hidden_size).contiguous()
             outputs = []
             for t in range(x.size(1)):
                 x_t = x[:, t]
-                hx[i] = cell(x_t, hx[i])
-                x_t = hx[i]
-                outputs += [x_t]
+                hx = cell(x_t, hx)
+                outputs += [hx]
             x = torch.stack(outputs, 1)
             if self.batch_norm:
                 x = self.bns[i](x)

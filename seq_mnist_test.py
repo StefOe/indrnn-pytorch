@@ -10,18 +10,35 @@ from torchvision import datasets, transforms
 from torch.autograd import Variable
 import numpy as np
 
+parser = argparse.ArgumentParser(description='PyTorch IndRNN Addition test')
+# Default parameters taken from https://arxiv.org/abs/1803.04831
+parser.add_argument('--lr', type=float, default=0.0002,
+                    help='learning rate (default: 0.0002)')
+parser.add_argument('--n-layer', type=int, default=6,
+                    help='number of layer of IndRNN (default: 6)')
+parser.add_argument('--hidden_size', type=int, default=128,
+                    help='number of hidden units in one IndRNN layer(default: 128)')
+parser.add_argument('--no-cuda', action='store_true', default=False,
+                    help='disables CUDA training')
+parser.add_argument('--no-batch-norm', action='store_true', default=False,
+                    help='disable frame-wise batch normalization after each layer')
+parser.add_argument('--log_epoch', type=int, default=1,
+                    help='after how many iterations to report performance')
+
+
+parser.add_argument('--batch-size', type=int, default=256,
+                    help='input batch size for training (default: 256)')
+parser.add_argument('--max-steps', type=int, default=10000,
+                    help='input batch size for training (default: 10000)')
+
+args = parser.parse_args()
+args.cuda = not args.no_cuda and torch.cuda.is_available()
+args.batch_norm = not args.no_batch_norm
 
 # Parameters taken from https://arxiv.org/abs/1803.04831
-TIME_STEPS = 784
-NUM_UNITS = 128
-LEARNING_RATE = 2e-4
-NUM_LAYERS = 6
+TIME_STEPS = 784 # 28x28 pixels
 RECURRENT_MAX = pow(2, 1 / TIME_STEPS)
-BATCH_NORM = True
 
-# Parameters taken from https://arxiv.org/pdf/1511.06464
-BATCH_SIZE = 256
-MAX_STEPS = 10000 # unsure on this one
 
 cuda = torch.cuda.is_available()
 
@@ -30,8 +47,8 @@ class Net(nn.Module):
     def __init__(self, input_size, hidden_size, n_layer=2):
         super(Net, self).__init__()
         self.indrnn = IndRNN(
-            input_size, hidden_size, n_layer, batch_norm=BATCH_NORM,
-            cuda=cuda, hidden_max_abs=RECURRENT_MAX, step_size=TIME_STEPS)
+            input_size, hidden_size, n_layer, batch_norm=args.batch_norm,
+            hidden_max_abs=RECURRENT_MAX, step_size=TIME_STEPS)
         self.lin = nn.Linear(hidden_size, 10)
         self.lin.bias.data.fill_(.1)
         self.lin.weight.data.normal_(0, .01)
@@ -43,20 +60,20 @@ class Net(nn.Module):
 
 def main():
     # build model
-    model = Net(1, NUM_UNITS, NUM_LAYERS)
+    model = Net(1, args.hidden_size, args.n_layer)
     # model = LSTM()
     if cuda:
         model.cuda()
-    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
     # load data
-    train_data, test_data = sequential_MNIST(BATCH_SIZE, cuda=cuda)
+    train_data, test_data = sequential_MNIST(args.batch_size, cuda=cuda)
 
     # Train the model
     model.train()
     step = 0
     epochs = 0
-    while step < MAX_STEPS:
+    while step < args.max_steps:
         losses = []
         for data, target in train_data:
             if cuda:
@@ -69,12 +86,13 @@ def main():
             optimizer.step()
             losses.append(loss.data.cpu()[0])
             step += 1
-            if step >= MAX_STEPS:
+            if step >= args.max_steps:
                 break
+        if epochs % args.log_epoch == 0:
+            print(
+                "Epoch {} cross_entropy {}".format(
+                    epochs, np.mean(losses)))
         epochs += 1
-        print(
-            "Epoch {} cross_entropy {}".format(
-                epochs, np.mean(losses)))
 
     # get test error
     model.eval()

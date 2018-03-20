@@ -3,8 +3,6 @@ The addition problem is stated in https://arxiv.org/abs/1803.04831. The
 hyper-parameters are taken from that paper as well. The network should
 converge to a MSE around zero after 1500-3000 steps.
 
-I transformed this from https://github.com/batzner/indrnn/blob/master/examples/addition_rnn.py
-
 """
 from indrnn import IndRNN
 import torch
@@ -12,28 +10,42 @@ import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
 import numpy as np
+import argparse
 
 
-# Parameters taken from https://arxiv.org/abs/1803.04831
-TIME_STEPS = 100
-NUM_UNITS = 128
-LEARNING_RATE = 0.0002
-NUM_LAYERS = 2
-BATCH_NORM = False
-RECURRENT_MAX = pow(2, 1 / TIME_STEPS)
+parser = argparse.ArgumentParser(description='PyTorch IndRNN Addition test')
+# Default parameters taken from https://arxiv.org/abs/1803.04831
+parser.add_argument('--lr', type=float, default=0.0002,
+                    help='learning rate (default: 0.0002)')
+parser.add_argument('--time-steps', type=int, default=100,
+                    help='length of addition problem (default: 100)')
+parser.add_argument('--n-layer', type=int, default=2,
+                    help='number of layer of IndRNN (default: 2)')
+parser.add_argument('--hidden_size', type=int, default=128,
+                    help='number of hidden units in one IndRNN layer(default: 128)')
+parser.add_argument('--no-cuda', action='store_true', default=False,
+                    help='disables CUDA training')
+parser.add_argument('--batch-norm', action='store_true', default=False,
+                    help='enable frame-wise batch normalization after each layer')
+parser.add_argument('--log-interval', type=int, default=100,
+                    help='after how many iterations to report performance')
 
-# Parameters taken from https://arxiv.org/abs/1511.06464
-BATCH_SIZE = 50
 
-cuda = torch.cuda.is_available()
+# Default parameters taken from https://arxiv.org/abs/1511.06464
+parser.add_argument('--batch-size', type=int, default=50,
+                    help='input batch size for training (default: 50)')
 
+args = parser.parse_args()
+args.cuda = not args.no_cuda and torch.cuda.is_available()
+
+RECURRENT_MAX = pow(2, 1 / args.time_steps)
 
 class Net(nn.Module):
     def __init__(self, input_size, hidden_size, n_layer=2):
         super(Net, self).__init__()
         self.indrnn = IndRNN(
-            input_size, hidden_size, n_layer, batch_norm=BATCH_NORM,
-            cuda=cuda, hidden_max_abs=RECURRENT_MAX, step_size=TIME_STEPS)
+            input_size, hidden_size, n_layer, batch_norm=args.batch_norm,
+            hidden_max_abs=RECURRENT_MAX, step_size=args.time_steps)
         self.lin = nn.Linear(hidden_size, 1)
         self.lin.bias.data.fill_(.1)
         self.lin.weight.data.normal_(0, .01)
@@ -46,8 +58,8 @@ class Net(nn.Module):
 class LSTM(nn.Module):
     def __init__(self):
         super(LSTM, self).__init__()
-        self.cell1 = nn.LSTM(2, NUM_UNITS)
-        self.lin = nn.Linear(NUM_UNITS, 1)
+        self.cell1 = nn.LSTM(2, args.hidden_size)
+        self.lin = nn.Linear(args.hidden_size, 1)
 
     def forward(self, x, hidden=None):
         x, hidden = self.cell1(x, hidden)
@@ -56,21 +68,21 @@ class LSTM(nn.Module):
 
 def main():
     # build model
-    model = Net(2, NUM_UNITS, NUM_LAYERS)
+    model = Net(2, args.hidden_size, args.n_layer)
     # model = LSTM()
-    if cuda:
+    if args.cuda:
         model.cuda()
-    optimizer = torch.optim.Adam(model.parameters(), lr=LEARNING_RATE)
+    optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
 
     # Train the model
     model.train()
     step = 0
     while True:
         losses = []
-        for _ in range(100):
+        for _ in range(args.log_interval):
             # Generate new input data
             data, target = get_batch()
-            if cuda:
+            if args.cuda:
                 data, target = data.cuda(), target.cuda()
             data, target = Variable(data), Variable(target)
             model.zero_grad()
@@ -82,28 +94,27 @@ def main():
             step += 1
 
         print(
-            "Step [x100] {} MSE {}".format(int(step / 100), np.mean(losses)))
-
+            "MSE after {} iterations: {}".format(step, np.mean(losses)))
 
 def get_batch():
     """Generate the adding problem dataset"""
     # Build the first sequence
-    add_values = np.random.rand(BATCH_SIZE, TIME_STEPS)
+    add_values = torch.rand(args.batch_size, args.time_steps)
 
     # Build the second sequence with one 1 in each half and 0s otherwise
-    add_indices = np.zeros_like(add_values)
-    half = int(TIME_STEPS / 2)
-    for i in range(BATCH_SIZE):
+    add_indices = torch.zeros_like(add_values)
+    half = int(args.time_steps / 2)
+    for i in range(args.batch_size):
         first_half = np.random.randint(half)
-        second_half = np.random.randint(half, TIME_STEPS)
-        add_indices[i, [first_half, second_half]] = 1
+        second_half = np.random.randint(half, args.time_steps)
+        add_indices[i, first_half] = 1
+        add_indices[i, second_half] = 1
 
     # Zip the values and indices in a third dimension:
     # inputs has the shape (batch_size, time_steps, 2)
-    inputs = np.dstack((add_values, add_indices))
-    targets = np.sum(np.multiply(add_values, add_indices), axis=1)
-    return torch.from_numpy(inputs).float(), torch.from_numpy(targets).float()
-
+    inputs = torch.stack((add_values, add_indices), dim=-1)
+    targets = torch.mul(add_values, add_indices).sum(dim=1)
+    return inputs, targets
 
 if __name__ == "__main__":
     main()
