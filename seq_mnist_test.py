@@ -9,6 +9,7 @@ import torch.nn.functional as F
 from torchvision import datasets, transforms
 from torch.autograd import Variable
 import numpy as np
+import argparse
 
 parser = argparse.ArgumentParser(description='PyTorch IndRNN Addition test')
 # Default parameters taken from https://arxiv.org/abs/1803.04831
