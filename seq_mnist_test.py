@@ -56,7 +56,7 @@ class Net(nn.Module):
 
     def forward(self, x, hidden=None):
         y = self.indrnn(x, hidden)
-        return self.lin(y[:, -1]).squeeze(1)
+        return self.lin(y[-1])
 
 
 def main():
@@ -78,7 +78,7 @@ def main():
         losses = []
         for data, target in train_data:
             if cuda:
-                data, target = data.cuda(), target.cuda()
+                data, target = data.view(784, args.batch_size, 1).cuda(), target.cuda()
             data, target = Variable(data), Variable(target)
             model.zero_grad()
             out = model(data)
@@ -100,7 +100,7 @@ def main():
     correct = 0
     for data, target in test_data:
         if cuda:
-            data, target = data.cuda(), target.cuda()
+            data, target = data.view(784, args.batch_size, 1).cuda(), target.cuda()
         data, target = Variable(data), Variable(target)
         out = model(data)
         pred = out.data.max(1, keepdim=True)[1]

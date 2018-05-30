@@ -29,6 +29,8 @@ parser.add_argument('--batch-norm', action='store_true', default=False,
                     help='enable frame-wise batch normalization after each layer')
 parser.add_argument('--log-interval', type=int, default=100,
                     help='after how many iterations to report performance')
+parser.add_argument('--model', type=str, default="IndRNN",
+                    help='if either IndRNN or LSTM cells should be used for optimization')
 
 
 # Default parameters taken from https://arxiv.org/abs/1511.06464
@@ -52,7 +54,7 @@ class Net(nn.Module):
 
     def forward(self, x, hidden=None):
         y = self.indrnn(x, hidden)
-        return self.lin(y[:, -1]).squeeze(1)
+        return self.lin(y[-1]).squeeze(1)
 
 
 class LSTM(nn.Module):
@@ -63,13 +65,17 @@ class LSTM(nn.Module):
 
     def forward(self, x, hidden=None):
         x, hidden = self.cell1(x, hidden)
-        return self.lin(x[:, -1]).squeeze(1)
+        return self.lin(x[-1]).squeeze(1)
 
 
 def main():
     # build model
-    model = Net(2, args.hidden_size, args.n_layer)
-    # model = LSTM()
+    if args.model == "IndRNN":
+        model = Net(2, args.hidden_size, args.n_layer)
+    elif args.model == "LSTM":
+        model = LSTM()
+    else:
+        raise Exception("unsupported cell model")
     if args.cuda:
         model.cuda()
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
@@ -90,7 +96,7 @@ def main():
             loss = F.mse_loss(out, target)
             loss.backward()
             optimizer.step()
-            losses.append(loss.data.cpu()[0])
+            losses.append(loss.data.cpu().item())
             step += 1
 
         print(
@@ -99,7 +105,7 @@ def main():
 def get_batch():
     """Generate the adding problem dataset"""
     # Build the first sequence
-    add_values = torch.rand(args.batch_size, args.time_steps)
+    add_values = torch.rand(args.time_steps, args.batch_size)
 
     # Build the second sequence with one 1 in each half and 0s otherwise
     add_indices = torch.zeros_like(add_values)
@@ -107,13 +113,13 @@ def get_batch():
     for i in range(args.batch_size):
         first_half = np.random.randint(half)
         second_half = np.random.randint(half, args.time_steps)
-        add_indices[i, first_half] = 1
-        add_indices[i, second_half] = 1
+        add_indices[first_half, i] = 1
+        add_indices[second_half, i] = 1
 
     # Zip the values and indices in a third dimension:
-    # inputs has the shape (batch_size, time_steps, 2)
+    # inputs has the shape (time_steps, batch_size, 2)
     inputs = torch.stack((add_values, add_indices), dim=-1)
-    targets = torch.mul(add_values, add_indices).sum(dim=1)
+    targets = torch.mul(add_values, add_indices).sum(dim=0)
     return inputs, targets
 
 if __name__ == "__main__":

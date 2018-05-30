@@ -196,24 +196,23 @@ class IndRNN(nn.Module):
         if batch_norm:
             bns = []
             for i in range(n_layer):
-                bns += [nn.BatchNorm2d(step_size)]
+                bns += [nn.BatchNorm1d(hidden_size)]
             self.bns = nn.ModuleList(bns)
-            
-        
+
         h0 = torch.zeros(hidden_size)
         self.register_buffer('h0', torch.autograd.Variable(h0))
 
 
-    def forward(self, x, hidden=None):                
+    def forward(self, x, hidden=None):
         for i, cell in enumerate(self.cells):
             cell.check_bounds()
-            hx = self.h0.unsqueeze(0).expand(x.size(0), self.hidden_size).contiguous()
+            hx = self.h0.unsqueeze(0).expand(x.size(1), self.hidden_size).contiguous()
             outputs = []
-            for t in range(x.size(1)):
-                x_t = x[:, t]
+            for t in range(x.size(0)):
+                x_t = x[t]
                 hx = cell(x_t, hx)
+                if self.batch_norm:
+                    hx = self.bns[i](hx)
                 outputs += [hx]
-            x = torch.stack(outputs, 1)
-            if self.batch_norm:
-                x = self.bns[i](x)
+            x = torch.stack(outputs, 0)
         return x.squeeze(2)
