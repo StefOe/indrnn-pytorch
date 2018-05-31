@@ -143,6 +143,7 @@ class IndRNN(nn.Module):
         nonlinearity: The non-linearity to use. Can be either 'tanh' or 'relu'. Default: 'tanh'
         bias: If ``False``, then the layer does not use bias weights `b_ih` and `b_hh`.
             Default: ``True``
+        batch_norm: If ``True``, then batch normalization is applied after each time step
         batch_first: If ``True``, then the input and output tensors are provided
             as `(batch, seq, feature)`
 
@@ -176,13 +177,12 @@ class IndRNN(nn.Module):
     """
 
     def __init__(self, input_size, hidden_size, n_layer=1, batch_norm=False,
-                 step_size=None, batch_first=False, **kwargs):
+                 batch_first=False, **kwargs):
         super(IndRNN, self).__init__()
         self.hidden_size = hidden_size
-        if batch_norm and step_size is None:
+        if batch_norm:
             raise Exception("Frame wise batch size needs to know the step size")
         self.batch_norm = batch_norm
-        self.step_size = step_size
         self.n_layer = n_layer
         self.batch_first = batch_first
         if batch_first:

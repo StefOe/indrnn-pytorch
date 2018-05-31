@@ -47,7 +47,7 @@ class Net(nn.Module):
         super(Net, self).__init__()
         self.indrnn = IndRNN(
             input_size, hidden_size, n_layer, batch_norm=args.batch_norm,
-            hidden_max_abs=RECURRENT_MAX, step_size=args.time_steps)
+            hidden_max_abs=RECURRENT_MAX)
         self.lin = nn.Linear(hidden_size, 1)
         self.lin.bias.data.fill_(.1)
         self.lin.weight.data.normal_(0, .01)
