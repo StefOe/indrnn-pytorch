@@ -180,8 +180,6 @@ class IndRNN(nn.Module):
                  batch_first=False, **kwargs):
         super(IndRNN, self).__init__()
         self.hidden_size = hidden_size
-        if batch_norm:
-            raise Exception("Frame wise batch size needs to know the step size")
         self.batch_norm = batch_norm
         self.n_layer = n_layer
         self.batch_first = batch_first
