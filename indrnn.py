@@ -176,7 +176,7 @@ class IndRNN(nn.Module):
     """
 
     def __init__(self, input_size, hidden_size, n_layer=1, batch_norm=False,
-                 step_size=None, **kwargs):
+                 step_size=None, batch_first=False, **kwargs):
         super(IndRNN, self).__init__()
         self.hidden_size = hidden_size
         if batch_norm and step_size is None:
@@ -184,6 +184,15 @@ class IndRNN(nn.Module):
         self.batch_norm = batch_norm
         self.step_size = step_size
         self.n_layer = n_layer
+        self.batch_first = batch_first
+        if batch_first:
+            self.time_index = 1
+            self.batch_index = 0
+            self._gather = self._gather_batch_first
+        else:
+            self.time_index = 0
+            self.batch_index = 1
+            self._gather = self._gather_time_first
 
         cells = []
         for i in range(n_layer):
@@ -203,16 +212,22 @@ class IndRNN(nn.Module):
         self.register_buffer('h0', torch.autograd.Variable(h0))
 
 
+    def _gather_batch_first(self, x, index):
+        return x[:, index]
+
+    def _gather_time_first(self, x, index):
+        return x[index]
+
     def forward(self, x, hidden=None):
         for i, cell in enumerate(self.cells):
             cell.check_bounds()
-            hx = self.h0.unsqueeze(0).expand(x.size(1), self.hidden_size).contiguous()
+            hx = self.h0.unsqueeze(0).expand(x.size(self.batch_index), self.hidden_size).contiguous()
             outputs = []
-            for t in range(x.size(0)):
-                x_t = x[t]
+            for t in range(x.size(self.time_index)):
+                x_t = self._gather(x, t)
                 hx = cell(x_t, hx)
                 if self.batch_norm:
                     hx = self.bns[i](hx)
                 outputs += [hx]
-            x = torch.stack(outputs, 0)
+            x = torch.stack(outputs, self.time_index)
         return x.squeeze(2)

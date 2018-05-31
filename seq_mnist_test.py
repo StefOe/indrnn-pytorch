@@ -49,14 +49,15 @@ class Net(nn.Module):
         super(Net, self).__init__()
         self.indrnn = IndRNN(
             input_size, hidden_size, n_layer, batch_norm=args.batch_norm,
-            hidden_max_abs=RECURRENT_MAX, step_size=TIME_STEPS)
+            hidden_max_abs=RECURRENT_MAX, step_size=TIME_STEPS,
+            batch_first=True)
         self.lin = nn.Linear(hidden_size, 10)
         self.lin.bias.data.fill_(.1)
         self.lin.weight.data.normal_(0, .01)
 
     def forward(self, x, hidden=None):
         y = self.indrnn(x, hidden)
-        return self.lin(y[-1])
+        return self.lin(y[:, -1])
 
 
 def main():
@@ -78,7 +79,7 @@ def main():
         losses = []
         for data, target in train_data:
             if cuda:
-                data, target = data.view(784, args.batch_size, 1).cuda(), target.cuda()
+                data, target = data.cuda(), target.cuda()
             data, target = Variable(data), Variable(target)
             model.zero_grad()
             out = model(data)
@@ -100,7 +101,7 @@ def main():
     correct = 0
     for data, target in test_data:
         if cuda:
-            data, target = data.view(784, args.batch_size, 1).cuda(), target.cuda()
+            data, target = data.cuda(), target.cuda()
         data, target = Variable(data), Variable(target)
         out = model(data)
         pred = out.data.max(1, keepdim=True)[1]
