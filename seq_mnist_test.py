@@ -24,13 +24,15 @@ parser.add_argument('--no-cuda', action='store_true', default=False,
 parser.add_argument('--no-batch-norm', action='store_true', default=False,
                     help='disable frame-wise batch normalization after each layer')
 parser.add_argument('--log_epoch', type=int, default=1,
-                    help='after how many iterations to report performance')
-
-
+                    help='after how many epochs to report performance')
+parser.add_argument('--log_iteration', type=int, default=-1,
+                    help='after how many iterations to report performance, deactivates with -1 (default: -1)')
+parser.add_argument('--bidirectional', action='store_true', default=False,
+help='enable bidirectional processing')
 parser.add_argument('--batch-size', type=int, default=256,
                     help='input batch size for training (default: 256)')
 parser.add_argument('--max-steps', type=int, default=10000,
-                    help='input batch size for training (default: 10000)')
+                    help='max iterations of training (default: 10000)')
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -49,15 +51,16 @@ class Net(nn.Module):
         super(Net, self).__init__()
         self.indrnn = IndRNN(
             input_size, hidden_size, n_layer, batch_norm=args.batch_norm,
-            hidden_max_abs=RECURRENT_MAX,
-            batch_first=True)
-        self.lin = nn.Linear(hidden_size, 10)
+            hidden_max_abs=RECURRENT_MAX, batch_first=True,
+            bidirectional=args.bidirectional)
+        self.lin = nn.Linear(
+            hidden_size*2 if args.bidirectional else hidden_size, 10)
         self.lin.bias.data.fill_(.1)
         self.lin.weight.data.normal_(0, .01)
 
     def forward(self, x, hidden=None):
         y = self.indrnn(x, hidden)
-        return self.lin(y[:, -1])
+        return self.lin(y[:, -1]).squeeze(1)
 
 
 def main():
@@ -86,8 +89,13 @@ def main():
             loss = F.cross_entropy(out, target)
             loss.backward()
             optimizer.step()
-            losses.append(loss.data.cpu()[0])
+            losses.append(loss.data.cpu().item())
             step += 1
+
+            if step % args.log_iteration == 0 and args.log_iteration != -1:
+                print(
+                    "\tStep {} cross_entropy {}".format(
+                        step, np.mean(losses)))
             if step >= args.max_steps:
                 break
         if epochs % args.log_epoch == 0:

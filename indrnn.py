@@ -177,12 +177,16 @@ class IndRNN(nn.Module):
     """
 
     def __init__(self, input_size, hidden_size, n_layer=1, batch_norm=False,
-                 batch_first=False, **kwargs):
+                 batch_first=False, bidirectional=False, **kwargs):
         super(IndRNN, self).__init__()
         self.hidden_size = hidden_size
         self.batch_norm = batch_norm
         self.n_layer = n_layer
         self.batch_first = batch_first
+        self.bidirectional = bidirectional
+
+        num_directions = 2 if self.bidirectional else 1
+
         if batch_first:
             self.time_index = 1
             self.batch_index = 0
@@ -194,19 +198,25 @@ class IndRNN(nn.Module):
 
         cells = []
         for i in range(n_layer):
-            if i == 0:
-                cells += [IndRNNCell(input_size, hidden_size, **kwargs)]
-            else:
-                cells += [IndRNNCell(hidden_size, hidden_size, **kwargs)]
+            directions = []
+            for dir in range(num_directions):
+                if i == 0:
+                    directions += [IndRNNCell(input_size, hidden_size, **kwargs)]
+                else:
+                    directions += [IndRNNCell(hidden_size*num_directions, hidden_size, **kwargs)]
+            cells += [nn.ModuleList(directions)]
         self.cells = nn.ModuleList(cells)
 
         if batch_norm:
             bns = []
             for i in range(n_layer):
-                bns += [nn.BatchNorm1d(hidden_size)]
+                directions = []
+                for dir in range(num_directions):
+                    directions += [nn.BatchNorm1d(hidden_size)]
+                bns += [nn.ModuleList(directions)]
             self.bns = nn.ModuleList(bns)
 
-        h0 = torch.zeros(hidden_size)
+        h0 = torch.zeros(hidden_size*num_directions)
         self.register_buffer('h0', torch.autograd.Variable(h0))
 
 
@@ -216,16 +226,41 @@ class IndRNN(nn.Module):
     def _gather_time_first(self, x, index):
         return x[index]
 
+
     def forward(self, x, hidden=None):
-        for i, cell in enumerate(self.cells):
-            cell.check_bounds()
-            hx = self.h0.unsqueeze(0).expand(x.size(self.batch_index), self.hidden_size).contiguous()
-            outputs = []
-            for t in range(x.size(self.time_index)):
-                x_t = self._gather(x, t)
-                hx = cell(x_t, hx)
-                if self.batch_norm:
-                    hx = self.bns[i](hx)
-                outputs += [hx]
-            x = torch.stack(outputs, self.time_index)
-        return x.squeeze(2)
+        num_directions = 2 if self.bidirectional else 1
+
+        for i, directions in enumerate(self.cells):
+            hx = self.h0.unsqueeze(0).expand(
+                x.size(self.batch_index),
+                       self.hidden_size*num_directions).contiguous()
+
+            x_n = []
+            for dir, cell in enumerate(directions):
+                hx_cell = hx[
+                    :, self.hidden_size*dir: self.hidden_size*(dir+1)]
+                cell.check_bounds()
+                outputs = []
+                hiddens = []
+                r = range(x.size(self.time_index))
+                if dir == 1:
+                    r = reversed(r)
+                for t in r:
+                    x_t = self._gather(x, t)
+                    hx_cell = cell(x_t, hx_cell)
+                    if self.batch_norm:
+                        hx_cell = self.bns[i][dir](hx_cell)
+                    outputs += [hx_cell]
+                x_cell = torch.stack(outputs, self.time_index)
+                if dir == 1:
+                    flip(x_cell, self.time_index)
+                x_n += [x_cell]
+                hiddens += [hx_cell]
+            x = torch.cat(x_n, -1)
+        return x.squeeze(2), torch.cat(hiddens, -1)
+
+def flip(x, dim):
+    indices = [slice(None)] * x.dim()
+    indices[dim] = torch.arange(x.size(dim) - 1, -1, -1,
+                                dtype=torch.long, device=x.device)
+    return x[tuple(indices)]

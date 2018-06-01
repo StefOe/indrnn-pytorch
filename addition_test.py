@@ -27,6 +27,8 @@ parser.add_argument('--no-cuda', action='store_true', default=False,
                     help='disables CUDA training')
 parser.add_argument('--batch-norm', action='store_true', default=False,
                     help='enable frame-wise batch normalization after each layer')
+parser.add_argument('--bidirectional', action='store_true', default=False,
+                    help='enable bidirectional processing')
 parser.add_argument('--log-interval', type=int, default=100,
                     help='after how many iterations to report performance')
 parser.add_argument('--model', type=str, default="IndRNN",
@@ -46,14 +48,17 @@ class Net(nn.Module):
     def __init__(self, input_size, hidden_size, n_layer=2):
         super(Net, self).__init__()
         self.indrnn = IndRNN(
-            input_size, hidden_size, n_layer, batch_norm=args.batch_norm,
+            input_size, hidden_size,
+            n_layer, batch_norm=args.batch_norm,
+            bidirectional=args.bidirectional,
             hidden_max_abs=RECURRENT_MAX)
-        self.lin = nn.Linear(hidden_size, 1)
+        self.lin = nn.Linear(
+            hidden_size*2 if args.bidirectional else hidden_size, 1)
         self.lin.bias.data.fill_(.1)
         self.lin.weight.data.normal_(0, .01)
 
     def forward(self, x, hidden=None):
-        y = self.indrnn(x, hidden)
+        y, _ = self.indrnn(x, hidden)
         return self.lin(y[-1]).squeeze(1)
 
 
