@@ -44,6 +44,7 @@ args.cuda = not args.no_cuda and torch.cuda.is_available()
 
 RECURRENT_MAX = pow(2, 1 / args.time_steps)
 
+
 class Net(nn.Module):
     def __init__(self, input_size, hidden_size, n_layer=2):
         super(Net, self).__init__()
@@ -53,7 +54,7 @@ class Net(nn.Module):
             bidirectional=args.bidirectional,
             hidden_max_abs=RECURRENT_MAX)
         self.lin = nn.Linear(
-            hidden_size*2 if args.bidirectional else hidden_size, 1)
+            hidden_size * 2 if args.bidirectional else hidden_size, 1)
         self.lin.bias.data.fill_(.1)
         self.lin.weight.data.normal_(0, .01)
 
@@ -107,6 +108,7 @@ def main():
         print(
             "MSE after {} iterations: {}".format(step, np.mean(losses)))
 
+
 def get_batch():
     """Generate the adding problem dataset"""
     # Build the first sequence
@@ -126,6 +128,7 @@ def get_batch():
     inputs = torch.stack((add_values, add_indices), dim=-1)
     targets = torch.mul(add_values, add_indices).sum(dim=0)
     return inputs, targets
+
 
 if __name__ == "__main__":
     main()

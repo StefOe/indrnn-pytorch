@@ -28,7 +28,7 @@ parser.add_argument('--log_epoch', type=int, default=1,
 parser.add_argument('--log_iteration', type=int, default=-1,
                     help='after how many iterations to report performance, deactivates with -1 (default: -1)')
 parser.add_argument('--bidirectional', action='store_true', default=False,
-help='enable bidirectional processing')
+                    help='enable bidirectional processing')
 parser.add_argument('--batch-size', type=int, default=256,
                     help='input batch size for training (default: 256)')
 parser.add_argument('--max-steps', type=int, default=10000,
@@ -39,7 +39,7 @@ args.cuda = not args.no_cuda and torch.cuda.is_available()
 args.batch_norm = not args.no_batch_norm
 
 # Parameters taken from https://arxiv.org/abs/1803.04831
-TIME_STEPS = 784 # 28x28 pixels
+TIME_STEPS = 784  # 28x28 pixels
 RECURRENT_MAX = pow(2, 1 / TIME_STEPS)
 
 
@@ -54,12 +54,12 @@ class Net(nn.Module):
             hidden_max_abs=RECURRENT_MAX, batch_first=True,
             bidirectional=args.bidirectional)
         self.lin = nn.Linear(
-            hidden_size*2 if args.bidirectional else hidden_size, 10)
+            hidden_size * 2 if args.bidirectional else hidden_size, 10)
         self.lin.bias.data.fill_(.1)
         self.lin.weight.data.normal_(0, .01)
 
     def forward(self, x, hidden=None):
-        y = self.indrnn(x, hidden)
+        y, _ = self.indrnn(x, hidden)
         return self.lin(y[:, -1]).squeeze(1)
 
 
@@ -117,8 +117,6 @@ def main():
     print(
         "Test accuracy:: {:.4f}".format(
             100. * correct / len(test_data.dataset)))
-
-
 
 
 def sequential_MNIST(batch_size, cuda=False, dataset_folder='./data'):

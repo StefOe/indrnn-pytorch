@@ -60,6 +60,13 @@ class IndRNNCell(nn.Module):
         self.hidden_size = hidden_size
         self.bias = bias
         self.nonlinearity = nonlinearity
+        if self.nonlinearity == "tanh":
+            self.activation = F.tanh
+        elif self.nonlinearity == "relu":
+            self.activation = F.relu
+        else:
+            raise RuntimeError(
+                "Unknown nonlinearity: {}".format(self.nonlinearity))
         self.weight_ih = Parameter(torch.Tensor(hidden_size, input_size))
         self.weight_hh = Parameter(torch.Tensor(hidden_size))
         if bias:
@@ -98,25 +105,8 @@ class IndRNNCell(nn.Module):
                             min=-self.hidden_max_abs))
 
     def forward(self, input, hx):
-        if self.nonlinearity == "tanh":
-            func = IndRNNTanhCell
-        elif self.nonlinearity == "relu":
-            func = IndRNNReLuCell
-        else:
-            raise RuntimeError(
-                "Unknown nonlinearity: {}".format(self.nonlinearity))
-
-        return func(input, hx, self.weight_ih, self.weight_hh, self.bias_ih)
-
-
-def IndRNNTanhCell(input, hidden, w_ih, w_hh, b_ih=None):
-    hy = F.tanh(F.linear(input, w_ih, b_ih) + F.mul(w_hh, hidden))
-    return hy
-
-
-def IndRNNReLuCell(input, hidden, w_ih, w_hh, b_ih=None):
-    hy = F.relu(F.linear(input, w_ih, b_ih) + F.mul(w_hh, hidden))
-    return hy
+        return self.activation(F.linear(
+            input, self.weight_ih, self.bias_ih) + F.mul(self.weight_hh, hx))
 
 
 class IndRNN(nn.Module):
@@ -190,21 +180,21 @@ class IndRNN(nn.Module):
         if batch_first:
             self.time_index = 1
             self.batch_index = 0
-            self._gather = self._gather_batch_first
         else:
             self.time_index = 0
             self.batch_index = 1
-            self._gather = self._gather_time_first
 
         cells = []
         for i in range(n_layer):
             directions = []
             for dir in range(num_directions):
                 if i == 0:
-                    directions += [IndRNNCell(input_size, hidden_size, **kwargs)]
+                    directions.append(IndRNNCell(
+                        input_size, hidden_size, **kwargs))
                 else:
-                    directions += [IndRNNCell(hidden_size*num_directions, hidden_size, **kwargs)]
-            cells += [nn.ModuleList(directions)]
+                    directions.append(IndRNNCell(
+                        hidden_size * num_directions, hidden_size, **kwargs))
+            cells.append(nn.ModuleList(directions))
         self.cells = nn.ModuleList(cells)
 
         if batch_norm:
@@ -212,55 +202,43 @@ class IndRNN(nn.Module):
             for i in range(n_layer):
                 directions = []
                 for dir in range(num_directions):
-                    directions += [nn.BatchNorm1d(hidden_size)]
-                bns += [nn.ModuleList(directions)]
+                    directions.append(nn.BatchNorm1d(hidden_size))
+                bns.append(nn.ModuleList(directions))
             self.bns = nn.ModuleList(bns)
 
-        h0 = torch.zeros(hidden_size*num_directions)
+        h0 = torch.zeros(hidden_size * num_directions)
         self.register_buffer('h0', torch.autograd.Variable(h0))
 
-
-    def _gather_batch_first(self, x, index):
-        return x[:, index]
-
-    def _gather_time_first(self, x, index):
-        return x[index]
-
-
     def forward(self, x, hidden=None):
+        batch_norm = self.batch_norm
+        time_index = self.time_index
+        batch_index = self.batch_index
         num_directions = 2 if self.bidirectional else 1
 
         for i, directions in enumerate(self.cells):
             hx = self.h0.unsqueeze(0).expand(
-                x.size(self.batch_index),
-                       self.hidden_size*num_directions).contiguous()
+                x.size(batch_index),
+                self.hidden_size * num_directions).contiguous()
 
             x_n = []
             for dir, cell in enumerate(directions):
                 hx_cell = hx[
-                    :, self.hidden_size*dir: self.hidden_size*(dir+1)]
+                    :, self.hidden_size * dir: self.hidden_size * (dir + 1)]
                 cell.check_bounds()
                 outputs = []
                 hiddens = []
-                r = range(x.size(self.time_index))
+                x_T = torch.unbind(x, time_index)
                 if dir == 1:
-                    r = reversed(r)
-                for t in r:
-                    x_t = self._gather(x, t)
+                    x_T = reversed(x_T)
+                for x_t in x_T:
                     hx_cell = cell(x_t, hx_cell)
-                    if self.batch_norm:
+                    if batch_norm:
                         hx_cell = self.bns[i][dir](hx_cell)
-                    outputs += [hx_cell]
-                x_cell = torch.stack(outputs, self.time_index)
+                    outputs.append(hx_cell)
                 if dir == 1:
-                    flip(x_cell, self.time_index)
-                x_n += [x_cell]
-                hiddens += [hx_cell]
+                    outputs = outputs[::-1]
+                x_cell = torch.stack(outputs, time_index)
+                x_n.append(x_cell)
+                hiddens.append(hx_cell)
             x = torch.cat(x_n, -1)
         return x.squeeze(2), torch.cat(hiddens, -1)
-
-def flip(x, dim):
-    indices = [slice(None)] * x.dim()
-    indices[dim] = torch.arange(x.size(dim) - 1, -1, -1,
-                                dtype=torch.long, device=x.device)
-    return x[tuple(indices)]
