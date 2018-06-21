@@ -41,6 +41,7 @@ args.batch_norm = not args.no_batch_norm
 # Parameters taken from https://arxiv.org/abs/1803.04831
 TIME_STEPS = 784  # 28x28 pixels
 RECURRENT_MAX = pow(2, 1 / TIME_STEPS)
+RECURRENT_MIN = pow(1/2, 1 / TIME_STEPS)
 
 
 cuda = torch.cuda.is_available()
@@ -49,10 +50,16 @@ cuda = torch.cuda.is_available()
 class Net(nn.Module):
     def __init__(self, input_size, hidden_size, n_layer=2):
         super(Net, self).__init__()
+        recurrent_inits = []
+        for _ in range(n_layer - 1):
+            recurrent_inits.append(lambda w: nn.init.uniform_(w, 0, RECURRENT_MAX))
+        recurrent_inits.append(lambda w: nn.init.uniform_(w, RECURRENT_MIN, RECURRENT_MAX))
         self.indrnn = IndRNN(
             input_size, hidden_size, n_layer, batch_norm=args.batch_norm,
             hidden_max_abs=RECURRENT_MAX, batch_first=True,
-            bidirectional=args.bidirectional)
+            bidirectional=args.bidirectional, recurrent_inits=recurrent_inits,
+            gradient_clip=5
+            )
         self.lin = nn.Linear(
             hidden_size * 2 if args.bidirectional else hidden_size, 10)
         self.lin.bias.data.fill_(.1)

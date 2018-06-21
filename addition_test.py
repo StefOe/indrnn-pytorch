@@ -48,11 +48,15 @@ RECURRENT_MAX = pow(2, 1 / args.time_steps)
 class Net(nn.Module):
     def __init__(self, input_size, hidden_size, n_layer=2):
         super(Net, self).__init__()
+        recurrent_inits = [lambda w: nn.init.uniform_(w, -RECURRENT_MAX, RECURRENT_MAX)]
+        for _ in range(1, n_layer):
+            recurrent_inits.append(lambda w: nn.init.constant_(w, 1))
         self.indrnn = IndRNN(
             input_size, hidden_size,
             n_layer, batch_norm=args.batch_norm,
             bidirectional=args.bidirectional,
-            hidden_max_abs=RECURRENT_MAX)
+            hidden_max_abs=RECURRENT_MAX,
+            recurrent_inits=recurrent_inits)
         self.lin = nn.Linear(
             hidden_size * 2 if args.bidirectional else hidden_size, 1)
         self.lin.bias.data.fill_(.1)
@@ -102,7 +106,7 @@ def main():
             loss = F.mse_loss(out, target)
             loss.backward()
             optimizer.step()
-            losses.append(loss.data.cpu().item())
+            losses.append(loss.item())
             step += 1
 
         print(

@@ -52,7 +52,9 @@ class IndRNNCell(nn.Module):
     """
 
     def __init__(self, input_size, hidden_size, bias=True, nonlinearity="relu",
-                 hidden_min_abs=0, hidden_max_abs=None):
+                 hidden_min_abs=0, hidden_max_abs=None, 
+                 hidden_init=None, recurrent_init=None,
+                 gradient_clip=None):
         super(IndRNNCell, self).__init__()
         self.hidden_max_abs = hidden_max_abs
         self.hidden_min_abs = hidden_min_abs
@@ -60,6 +62,8 @@ class IndRNNCell(nn.Module):
         self.hidden_size = hidden_size
         self.bias = bias
         self.nonlinearity = nonlinearity
+        self.hidden_init = hidden_init
+        self.recurrent_init = recurrent_init
         if self.nonlinearity == "tanh":
             self.activation = F.tanh
         elif self.nonlinearity == "relu":
@@ -73,21 +77,34 @@ class IndRNNCell(nn.Module):
             self.bias_ih = Parameter(torch.Tensor(hidden_size))
         else:
             self.register_parameter('bias_ih', None)
+        
+        if gradient_clip:
+            if isinstance(gradient_clip, tuple):
+                min_g, max_g = gradient_clip
+            else:
+                max_g = gradient_clip
+                min_g = -max_g
+            self.weight_ih.register_hook(lambda x: x.clamp(min=min_g, max=max_g))
+            self.weight_hh.register_hook(lambda x: x.clamp(min=min_g, max=max_g))
+            if bias:
+                self.bias_ih.register_hook(lambda x: x.clamp(min=min_g, max=max_g))
+        
         self.reset_parameters()
 
     def reset_parameters(self):
-        stdv = 1.0 / math.sqrt(self.hidden_size)
         for name, weight in self.named_parameters():
             if "bias" in name:
                 weight.data.zero_()
             elif "weight_hh" in name:
-                if self.hidden_max_abs:
-                    stdv_ = self.hidden_max_abs
+                if self.recurrent_init is None:
+                    nn.init.constant_(weight, 1)
                 else:
-                    stdv_ = stdv
-                weight.data.uniform_(-stdv_, stdv_)
+                    self.recurrent_init(weight)
             elif "weight_ih" in name:
-                weight.data.normal_(0, 0.01)
+                if self.hidden_init is None:
+                    nn.init.normal_(weight, 0, 0.01)
+                else:
+                    self.hidden_init(weight)
             else:
                 weight.data.normal_(0, 0.01)
                 # weight.data.uniform_(-stdv, stdv)
@@ -95,14 +112,10 @@ class IndRNNCell(nn.Module):
 
     def check_bounds(self):
         if self.hidden_min_abs:
-            abs_kernel = torch.abs(self.weight_hh.data)
-            min_abs_kernel = torch.clamp(abs_kernel, min=self.hidden_min_abs)
-            self.weight_hh.data.copy_(
-                torch.mul(torch.sign(self.weight_hh.data), min_abs_kernel))
+            abs_kernel = torch.abs(self.weight_hh.data).clamp_(min=self.hidden_min_abs)
+            self.weight_hh.data = self.weight_hh.mul(torch.sign(self.weight_hh.data), abs_kernel)
         if self.hidden_max_abs:
-            self.weight_hh.data.copy_(
-                torch.clamp(self.weight_hh.data, max=self.hidden_max_abs,
-                            min=-self.hidden_max_abs))
+            self.weight_hh.data = self.weight_hh.clamp(max=self.hidden_max_abs, min=-self.hidden_max_abs)
 
     def forward(self, input, hx):
         return self.activation(F.linear(
@@ -167,7 +180,9 @@ class IndRNN(nn.Module):
     """
 
     def __init__(self, input_size, hidden_size, n_layer=1, batch_norm=False,
-                 batch_first=False, bidirectional=False, **kwargs):
+                 batch_first=False, bidirectional=False, 
+                 hidden_inits=None, recurrent_inits=None,
+                 **kwargs):
         super(IndRNN, self).__init__()
         self.hidden_size = hidden_size
         self.batch_norm = batch_norm
@@ -187,23 +202,20 @@ class IndRNN(nn.Module):
         cells = []
         for i in range(n_layer):
             directions = []
+            if recurrent_inits is not None:
+                kwargs["recurrent_init"] = recurrent_inits[i]
+            if hidden_inits is not None:
+                kwargs["hidden_init"] = hidden_inits[i]
+            in_size = input_size if i == 0 else hidden_size * num_directions
             for dir in range(num_directions):
-                if i == 0:
-                    directions.append(IndRNNCell(
-                        input_size, hidden_size, **kwargs))
-                else:
-                    directions.append(IndRNNCell(
-                        hidden_size * num_directions, hidden_size, **kwargs))
+                directions.append(IndRNNCell(in_size, hidden_size, **kwargs))
             cells.append(nn.ModuleList(directions))
         self.cells = nn.ModuleList(cells)
 
         if batch_norm:
             bns = []
             for i in range(n_layer):
-                directions = []
-                for dir in range(num_directions):
-                    directions.append(nn.BatchNorm1d(hidden_size))
-                bns.append(nn.ModuleList(directions))
+                bns.append(nn.BatchNorm1d(hidden_size * num_directions))
             self.bns = nn.ModuleList(bns)
 
         h0 = torch.zeros(hidden_size * num_directions)
@@ -232,8 +244,6 @@ class IndRNN(nn.Module):
                     x_T = reversed(x_T)
                 for x_t in x_T:
                     hx_cell = cell(x_t, hx_cell)
-                    if batch_norm:
-                        hx_cell = self.bns[i][dir](hx_cell)
                     outputs.append(hx_cell)
                 if dir == 1:
                     outputs = outputs[::-1]
@@ -241,4 +251,10 @@ class IndRNN(nn.Module):
                 x_n.append(x_cell)
                 hiddens.append(hx_cell)
             x = torch.cat(x_n, -1)
+            
+            if batch_norm:
+                if self.batch_first:
+                    x = self.bns[i](x.permute(batch_index, 2, time_index).contiguous()).permute(0, 2, 1)
+                else:
+                    x = self.bns[i](x.permute(batch_index, 2, time_index).contiguous()).permute(2, 0, 1)
         return x.squeeze(2), torch.cat(hiddens, -1)
