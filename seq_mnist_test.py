@@ -13,7 +13,7 @@ import numpy as np
 import argparse
 from time import time
 
-parser = argparse.ArgumentParser(description='PyTorch IndRNN Addition test')
+parser = argparse.ArgumentParser(description='PyTorch IndRNN sequential MNIST test')
 # Default parameters taken from https://arxiv.org/abs/1803.04831
 parser.add_argument('--lr', type=float, default=0.0002,
                     help='learning rate (default: 0.0002)')
