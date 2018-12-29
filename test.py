@@ -22,4 +22,5 @@ def testIndRNNCell():
     # Pre-activations (4 + 2*u) should be -2, 0, 6, 10
     np.testing.assert_array_equal(output.data.numpy(), [[0., 0., 6., 10.]])
 
+
 testIndRNNCell()

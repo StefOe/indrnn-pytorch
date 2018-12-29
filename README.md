@@ -2,7 +2,9 @@
 pytorch implementation of the IndRNN Paper (https://arxiv.org/pdf/1803.04831.pdf)
 
 The test functions are adapted from the tensorflow implementation (https://github.com/batzner/indrnn) and the theano implementation (https://github.com/Sunnydreamrain/IndRNN_Theano_Lasagne).
-Tested with Python3.5 and pytorch 0.4.0
+Tested with Python3.7 and pytorch 1.0.0
+
+IndRNNv2 version should be faster with GPUs, especially for bidirectional networks.
 
 TODOs:
 -get parameters for MNIST experiments

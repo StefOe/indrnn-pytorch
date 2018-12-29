@@ -4,6 +4,7 @@ hyper-parameters are taken from that paper as well. The network should
 converge to a MSE around zero after 1500-3000 steps.
 
 """
+from indrnn import IndRNNv2
 from indrnn import IndRNN
 import torch
 import torch.nn as nn
@@ -11,6 +12,7 @@ import torch.nn.functional as F
 from torch.autograd import Variable
 import numpy as np
 import argparse
+from time import time
 
 
 parser = argparse.ArgumentParser(description='PyTorch IndRNN Addition test')
@@ -46,12 +48,13 @@ RECURRENT_MAX = pow(2, 1 / args.time_steps)
 
 
 class Net(nn.Module):
-    def __init__(self, input_size, hidden_size, n_layer=2):
+    def __init__(self, input_size, hidden_size, n_layer=2, model=IndRNN):
         super(Net, self).__init__()
-        recurrent_inits = [lambda w: nn.init.uniform_(w, -RECURRENT_MAX, RECURRENT_MAX)]
+        recurrent_inits = [lambda w: nn.init.uniform_(
+            w, -RECURRENT_MAX, RECURRENT_MAX)]
         for _ in range(1, n_layer):
             recurrent_inits.append(lambda w: nn.init.constant_(w, 1))
-        self.indrnn = IndRNN(
+        self.indrnn = model(
             input_size, hidden_size,
             n_layer, batch_norm=args.batch_norm,
             bidirectional=args.bidirectional,
@@ -80,9 +83,11 @@ class LSTM(nn.Module):
 
 def main():
     # build model
-    if args.model == "IndRNN":
+    if args.model.lower() == "indrnn":
         model = Net(2, args.hidden_size, args.n_layer)
-    elif args.model == "LSTM":
+    elif args.model.lower() == "indrnnv2":
+        model = Net(2, args.hidden_size, args.n_layer, IndRNNv2)
+    elif args.model.lower() == "lstm":
         model = LSTM()
     else:
         raise Exception("unsupported cell model")
@@ -95,6 +100,7 @@ def main():
     step = 0
     while True:
         losses = []
+        start = time()
         for _ in range(args.log_interval):
             # Generate new input data
             data, target = get_batch()
@@ -110,7 +116,7 @@ def main():
             step += 1
 
         print(
-            "MSE after {} iterations: {}".format(step, np.mean(losses)))
+            "MSE after {} iterations: {} ({} sec.)".format(step, np.mean(losses), time() - start))
 
 
 def get_batch():

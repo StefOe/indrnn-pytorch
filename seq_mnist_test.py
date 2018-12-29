@@ -3,6 +3,7 @@ The hyper-parameters are taken from that paper as well.
 
 """
 from indrnn import IndRNN
+from indrnn import IndRNNv2
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
@@ -10,6 +11,7 @@ from torchvision import datasets, transforms
 from torch.autograd import Variable
 import numpy as np
 import argparse
+from time import time
 
 parser = argparse.ArgumentParser(description='PyTorch IndRNN Addition test')
 # Default parameters taken from https://arxiv.org/abs/1803.04831
@@ -33,6 +35,8 @@ parser.add_argument('--batch-size', type=int, default=256,
                     help='input batch size for training (default: 256)')
 parser.add_argument('--max-steps', type=int, default=10000,
                     help='max iterations of training (default: 10000)')
+parser.add_argument('--model', type=str, default="IndRNN",
+                    help='if either IndRNN or LSTM cells should be used for optimization')
 
 args = parser.parse_args()
 args.cuda = not args.no_cuda and torch.cuda.is_available()
@@ -41,25 +45,28 @@ args.batch_norm = not args.no_batch_norm
 # Parameters taken from https://arxiv.org/abs/1803.04831
 TIME_STEPS = 784  # 28x28 pixels
 RECURRENT_MAX = pow(2, 1 / TIME_STEPS)
-RECURRENT_MIN = pow(1/2, 1 / TIME_STEPS)
+RECURRENT_MIN = pow(1 / 2, 1 / TIME_STEPS)
 
 
 cuda = torch.cuda.is_available()
 
 
 class Net(nn.Module):
-    def __init__(self, input_size, hidden_size, n_layer=2):
+    def __init__(self, input_size, hidden_size, n_layer=2, model=IndRNN):
         super(Net, self).__init__()
         recurrent_inits = []
         for _ in range(n_layer - 1):
-            recurrent_inits.append(lambda w: nn.init.uniform_(w, 0, RECURRENT_MAX))
-        recurrent_inits.append(lambda w: nn.init.uniform_(w, RECURRENT_MIN, RECURRENT_MAX))
-        self.indrnn = IndRNN(
+            recurrent_inits.append(
+                lambda w: nn.init.uniform_(w, 0, RECURRENT_MAX)
+            )
+        recurrent_inits.append(lambda w: nn.init.uniform_(
+            w, RECURRENT_MIN, RECURRENT_MAX))
+        self.indrnn = model(
             input_size, hidden_size, n_layer, batch_norm=args.batch_norm,
             hidden_max_abs=RECURRENT_MAX, batch_first=True,
             bidirectional=args.bidirectional, recurrent_inits=recurrent_inits,
             gradient_clip=5
-            )
+        )
         self.lin = nn.Linear(
             hidden_size * 2 if args.bidirectional else hidden_size, 10)
         self.lin.bias.data.fill_(.1)
@@ -72,8 +79,13 @@ class Net(nn.Module):
 
 def main():
     # build model
-    model = Net(1, args.hidden_size, args.n_layer)
-    # model = LSTM()
+    if args.model.lower() == "indrnn":
+        model = Net(1, args.hidden_size, args.n_layer)
+    elif args.model.lower() == "indrnnv2":
+        model = Net(1, args.hidden_size, args.n_layer, IndRNNv2)
+    else:
+        raise Exception("unsupported cell model")
+
     if cuda:
         model.cuda()
     optimizer = torch.optim.Adam(model.parameters(), lr=args.lr)
@@ -87,6 +99,7 @@ def main():
     epochs = 0
     while step < args.max_steps:
         losses = []
+        start = time()
         for data, target in train_data:
             if cuda:
                 data, target = data.cuda(), target.cuda()
@@ -107,8 +120,8 @@ def main():
                 break
         if epochs % args.log_epoch == 0:
             print(
-                "Epoch {} cross_entropy {}".format(
-                    epochs, np.mean(losses)))
+                "Epoch {} cross_entropy {} ({} sec.)".format(
+                    epochs, np.mean(losses), time()-start))
         epochs += 1
 
     # get test error
