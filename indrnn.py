@@ -1,5 +1,5 @@
 import torch
-from torch.nn import Parameter
+from torch.nn import Parameter, ParameterList
 import torch.nn as nn
 import torch.nn.functional as F
 from torch.autograd import Variable
@@ -386,13 +386,14 @@ class IndRNNv2(nn.Module):
             self.time_index = 0
             self.batch_index = 1
 
-        self.cells_recurrent = Parameter(
-            torch.Tensor(n_layer, num_directions * hidden_size)
+        self.cells_recurrent = ParameterList(
+            [Parameter(torch.Tensor(num_directions * hidden_size)) for i in range(n_layer)]
         )
         if gradient_clip:
-            self.cells_recurrent.register_hook(
-                lambda x: x.clamp(min=min_g, max=max_g)
-            )
+            for param in self.cells_recurrent:
+                param.register_hook(
+                    lambda x: x.clamp(min=min_g, max=max_g)
+                )
 
         cells_hidden = []
         for i in range(n_layer):
