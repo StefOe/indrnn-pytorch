@@ -8,7 +8,6 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from torchvision import datasets, transforms
-from torch.autograd import Variable
 import numpy as np
 import argparse
 from time import time
@@ -103,7 +102,7 @@ def main():
         for data, target in train_data:
             if cuda:
                 data, target = data.cuda(), target.cuda()
-            data, target = Variable(data), Variable(target)
+            import pdb; pdb.set_trace()
             model.zero_grad()
             out = model(data)
             loss = F.cross_entropy(out, target)
@@ -130,7 +129,6 @@ def main():
     for data, target in test_data:
         if cuda:
             data, target = data.cuda(), target.cuda()
-        data, target = Variable(data), Variable(target)
         out = model(data)
         pred = out.data.max(1, keepdim=True)[1]
         correct += pred.eq(target.data.view_as(pred)).cpu().sum()
