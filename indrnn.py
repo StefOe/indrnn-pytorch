@@ -2,7 +2,6 @@ import torch
 from torch.nn import Parameter, ParameterList
 import torch.nn as nn
 import torch.nn.functional as F
-from torch.autograd import Variable
 import math
 
 
@@ -234,8 +233,8 @@ class IndRNN(nn.Module):
                 bns.append(nn.BatchNorm1d(hidden_size * num_directions))
             self.bns = nn.ModuleList(bns)
 
-        h0 = torch.zeros(hidden_size * num_directions)
-        self.register_buffer('h0', torch.autograd.Variable(h0))
+        h0 = torch.zeros(hidden_size * num_directions, requires_grad=False)
+        self.register_buffer('h0', h0)
 
     def forward(self, x, hidden=torch.tensor(float("nan"))):
         batch_norm = self.batch_norm
@@ -435,8 +434,8 @@ class IndRNNv2(nn.Module):
                 bns.append(nn.BatchNorm1d(hidden_size * num_directions))
             self.bns = nn.ModuleList(bns)
 
-        h0 = torch.zeros(hidden_size * num_directions)
-        self.register_buffer('h0', torch.autograd.Variable(h0))
+        h0 = torch.zeros(hidden_size * num_directions, requires_grad=False)
+        self.register_buffer('h0', h0)
 
     def forward(self, x, hidden=None):
         batch_norm = self.batch_norm
@@ -467,13 +466,14 @@ class IndRNNv2(nn.Module):
             else:
                 x_T = x
 
-            lin = cell_hidden(x_T).permute(2, 0, 1)
+            lin = cell_hidden(x_T)
+            lin = torch.unbind(lin, 2)
             recurrent_h = self.cells_recurrent[i]
             for t in range(frame_size):
                 hx = self.activation(lin[t] +
                                      torch.mul(recurrent_h, hx))
                 outputs.append(hx)
-            x = torch.stack(outputs, -1)
+            x = torch.stack(outputs, 2)
             hiddens.append(hx)
 
             if batch_norm:
