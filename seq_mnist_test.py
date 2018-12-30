@@ -102,7 +102,6 @@ def main():
         for data, target in train_data:
             if cuda:
                 data, target = data.cuda(), target.cuda()
-            import pdb; pdb.set_trace()
             model.zero_grad()
             out = model(data)
             loss = F.cross_entropy(out, target)
